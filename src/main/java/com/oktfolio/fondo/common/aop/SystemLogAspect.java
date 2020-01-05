@@ -1,5 +1,6 @@
 package com.oktfolio.fondo.common.aop;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.oktfolio.fondo.common.annotation.SystemLog;
 import com.oktfolio.fondo.model.Log;
 import com.oktfolio.fondo.service.LogService;
@@ -9,17 +10,20 @@ import org.aspectj.lang.annotation.After;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.NamedThreadLocal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
+import javax.servlet.http.HttpServletRequest;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.*;
 
 /**
  * @author oktfolio oktfolio@gmail.com
@@ -31,6 +35,12 @@ public class SystemLogAspect {
 
     private static final ThreadLocal<LocalDateTime> startTimeThreadLocal =
             new NamedThreadLocal<>("ThreadLocal " + "startTime");
+
+    @Autowired
+    private LogService logService;
+
+    @Autowired(required = false)
+    private HttpServletRequest request;
 
     /**
      * Controller 层切点,注解方式
@@ -61,6 +71,8 @@ public class SystemLogAspect {
     @After("controllerAspect()")
     public void after(JoinPoint joinPoint) {
 
+        Log log = new Log();
+
         try {
             UserDetails user = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
@@ -77,7 +89,22 @@ public class SystemLogAspect {
         LocalDateTime startTime = startTimeThreadLocal.get();
 
         Duration duration = Duration.between(startTime, endTime);
-        duration.
+        int nano = duration.getNano();
+
+        ExecutorService executorService = Executors.newFixedThreadPool(1);
+
+        ThreadFactory threadFactory = new ThreadFactoryBuilder()
+                .setNameFormat("thread-call-runner-%d")
+                .build();
+        ThreadPoolExecutor threadPoolExecutor =
+                new ThreadPoolExecutor(1, 3, 0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(256),
+                threadFactory,
+                new ThreadPoolExecutor.AbortPolicy());
+
+        executorService.execute(new SaveSystemLogThread(log, logService));
+
 
     }
 
@@ -97,7 +124,7 @@ public class SystemLogAspect {
         @Override
         public void run() {
 
-            logService.save(log);
+//            logService.save(log);
         }
     }
 
@@ -132,7 +159,7 @@ public class SystemLogAspect {
             }
             Class[] clazzs = method.getParameterTypes();
             if (clazzs.length != arguments.length) {
-                //比较方法中参数个数与从切点中获取的参数个数是否相同，原因是方法可以重载哦
+                // 比较方法中参数个数与从切点中获取的参数个数是否相同，原因是方法可以重载哦
                 continue;
             }
             name = method.getAnnotation(SystemLog.class).name();

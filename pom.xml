@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.oktfolio</groupId>
-    <artifactId>fondo-security</artifactId>
+    <artifactId>fondo</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>
